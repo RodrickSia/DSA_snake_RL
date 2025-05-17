@@ -418,7 +418,7 @@ def train():
 
     logging.info("==== Training finished ====")
 
-    #---------- VISUALIZE (Plotting the results) ----------
+    #---------- VISUALIZE (plotting the results) ----------
     # Choose the window size (e.g., 100 episodes)
     window = 100
 

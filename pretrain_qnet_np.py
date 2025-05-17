@@ -64,7 +64,7 @@ def int_to_bits(idx, bits=11):
     return np.array([(idx >> i) & 1 for i in reversed(range(bits))],
                     dtype=np.float32)
 
-def main():
+def train():
     # Configuration
     LOG_DIR = "logs"
     PRETRAIN_EPOCHS = 2000
@@ -108,4 +108,4 @@ def main():
     print("Pre-training xong → pretrained_qnet.npz")
 
 if __name__ == "__main__":
-    main()
+    train()
