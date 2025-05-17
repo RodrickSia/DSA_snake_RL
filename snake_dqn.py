@@ -5,16 +5,17 @@ import os
 import logging
 from datetime import datetime
 from collections import deque
+import matplotlib.pyplot as plt
 
 # ============================================================
 # ------------------  CONFIGURATION  -------------------------
 # ============================================================
-WIDTH, HEIGHT   = 600, 400         # Window size
+WIDTH, HEIGHT   = 800, 600         # Window size
 BLOCK           = 20               # Grid block size (px)
 RENDER_FPS      = 60               # FPS when visualising
 
 # ---------- RL hyper-parameters ----------
-EPISODES        = 1500
+EPISODES        = 2000
 MAX_STEPS       = 750
 BATCH_SIZE      = 64
 MEMORY_SIZE     = 30000
@@ -303,7 +304,15 @@ class DQNAgent:
     def __init__(self, state_dim: int, action_dim: int):
         self.online = Neural(state_dim, action_dim)
         self.target = Neural(state_dim, action_dim)
+
+        # ————— Load pretrained weights into the online network —————
+        data = np.load("pretrained_qnet.npz")
+        for p, key in zip(self.online.params, data.files):
+            np.copyto(p.val, data[key])
+
         self.target.copy_from(self.online)
+        print(">> DQNAgent: loaded pretrained_qnet.npz")
+
         self.memory = ReplayBuffer(MEMORY_SIZE)
         self.eps = EPS_START
         self.action_dim = action_dim
@@ -350,12 +359,22 @@ class DQNAgent:
 def vectorize_state(state_tuple):
     return np.array(state_tuple, dtype=np.float32)
 
+def moving_average(x, window=100):
+    """
+    Calculate the simple moving average (MA) of the list x with the given window length.
+    Returns a new array with length len(x) - window + 1.
+    """
+    weights = np.ones(window) / window
+    return np.convolve(x, weights, mode='valid')
+
+
 def train():
     env = SnakeGame(render=False)
     agent = DQNAgent(state_dim=11, action_dim=3)
 
     best_len = 0
     global_step = 0
+    rewards = []  # List to store total reward of each episode for visualization with a plot
 
     for ep in range(1, EPISODES + 1):
         s = env.reset()
@@ -375,12 +394,20 @@ def train():
             steps += 1
             global_step += 1
 
+            # # When setting render=True to visualize the training process,
+            # only render during the final episodes to avoid greatly slowing down
+            '''
+            if ep>=1950:
+                env.render()
+            '''
+
             if done or steps >= MAX_STEPS:
                 break
 
+        rewards.append(total_r)
+
         if len(env.snake) > best_len:
             best_len = len(env.snake)
-            # Save parameters using savez so different shapes are preserved.
             np.savez(os.path.join(LOG_DIR, "best_DQN.npz"),
                      *[p.val for p in agent.online.params])
 
@@ -391,5 +418,29 @@ def train():
 
     logging.info("==== Training finished ====")
 
+    #---------- VISUALIZE (Plotting the results) ----------
+    # Choose the window size (e.g., 100 episodes)
+    window = 100
+
+    # Calculate the Moving Average (MA)
+    smoothed = moving_average(rewards, window=window)
+
+    # Prepare the x-axis for the MA
+    #    since smoothed has length = len(rewards) - window + 1,
+    #    shift the index so that smoothed[i] corresponds to episode = i + (window - 1)
+    episodes_ma = range(window-1, len(rewards))
+
+    # Plot both Raw and Smoothed curves
+    plt.figure(figsize=(10,5))
+    plt.plot(rewards, alpha=0.3, label='Raw Reward')             # raw reward curve
+    plt.plot(episodes_ma, smoothed, label=f'MA (window={window})')  # smoothed curve
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.title(f'Reward per Episode (with {window}-episode MA)')
+    plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
     train()
+ 
