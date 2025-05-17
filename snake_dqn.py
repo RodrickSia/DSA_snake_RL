@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from collections import deque
 import matplotlib.pyplot as plt
+import csv
 
 # ============================================================
 # ------------------  CONFIGURATION  -------------------------
@@ -372,6 +373,17 @@ def train():
     env = SnakeGame(render=False)
     agent = DQNAgent(state_dim=11, action_dim=3)
 
+    # Open a CSV file to log frame-level data
+    run_log_file = os.path.join(RUN_DIR, f"frame_log_{datetime.now():%Y%m%d_%H%M%S}.csv")
+    run_csv = open(run_log_file, 'w', newline='')
+    csv_writer = csv.writer(run_csv)
+    # Header
+    csv_writer.writerow([
+        'episode', 'global_step', 'step_in_ep', 'frame',
+        'action', 'reward',
+        'q0', 'q1', 'q2'
+    ])
+
     best_len = 0
     global_step = 0
     rewards = []  # List to store total reward of each episode for visualization with a plot
@@ -385,6 +397,10 @@ def train():
             a = agent.choose_action(sv)
             s2, r, done = env.step(a)
             sv2 = vectorize_state(s2)
+
+            # --- Log each frame ---
+            q_vals = agent.online(sv[None, :])[0]
+            csv_writer.writerow([ep, global_step, steps, env.frame, a, r, *q_vals.tolist()])
 
             agent.store(sv, a, r, sv2, float(done))
             agent.update()
@@ -417,6 +433,7 @@ def train():
             print(f"[Ep {ep}] score={len(env.snake)}  eps={agent.eps:.3f}  best={best_len}")
 
     logging.info("==== Training finished ====")
+    run_csv.close()
 
     #---------- VISUALIZE (plotting the results) ----------
     # Choose the window size (e.g., 100 episodes)
@@ -439,7 +456,6 @@ def train():
     plt.title(f'Reward per Episode (with {window}-episode MA)')
     plt.legend()
     plt.show()
-
 
 if __name__ == "__main__":
     train()
