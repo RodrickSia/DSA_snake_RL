@@ -6,7 +6,6 @@ import logging
 from datetime import datetime
 from collections import deque
 import matplotlib.pyplot as plt
-import csv
 
 # ============================================================
 # ------------------  CONFIGURATION  -------------------------
@@ -33,6 +32,11 @@ RUN_DIR = "runs"
 LOG_DIR = "logs"
 os.makedirs(RUN_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
+
+#frames
+FRAMES_DIR = os.path.join(RUN_DIR, "frames")
+os.makedirs(FRAMES_DIR, exist_ok=True)
+
 log_filename = os.path.join(LOG_DIR, f"snake_DQN_{datetime.now():%Y%m%d_%H%M%S}.log")
 logging.basicConfig(filename=log_filename,
                     level=logging.INFO,
@@ -263,23 +267,79 @@ class SnakeGame:
         return self.get_state(), reward, done
 
     def render(self, save_path: str = None):
-        if not self.render_mode:
-            return
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-        self.display.fill((0, 0, 0))
-        pygame.draw.rect(self.display, (255, 0, 0),
-                         pygame.Rect(self.food[0]*self.block, self.food[1]*self.block, self.block, self.block))
+        '''
+        1) If render_mode=True, render to a window (display) for debugging.
+        2) Always create an off-screen Surface and, if save_path != None, save it as a PNG file.
+        '''
+        # === On-screen rendering (if needed) ===
+        if self.render_mode:
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit()
+                    quit()
+
+            # Clear the background
+            self.display.fill((0, 0, 0))
+
+            # Draw food on self.display
+            pygame.draw.rect(
+                self.display,
+                (255, 0, 0),
+                pygame.Rect(
+                    self.food[0] * self.block,
+                    self.food[1] * self.block,
+                    self.block, self.block
+                )
+            )
+
+            # Draw snake on self.display
+            for i, (x, y) in enumerate(self.snake):
+                color = (0, 255, 0) if i == 0 else (0, 200, 0)
+                pygame.draw.rect(
+                    self.display,
+                    color,
+                    pygame.Rect(
+                        x * self.block,
+                        y * self.block,
+                        self.block, self.block
+                    )
+                )
+
+            pygame.display.flip()
+            self.clock.tick(RENDER_FPS)
+
+        # === Off-screen rendering for saving image ===
+        # Create a hidden (off-screen) Surface
+        surf = pygame.Surface((self.w, self.h))
+        surf.fill((0, 0, 0))
+
+        # Draw food on surf
+        pygame.draw.rect(
+            surf,
+            (255, 0, 0),
+            pygame.Rect(
+                self.food[0] * self.block,
+                self.food[1] * self.block,
+                self.block, self.block
+            )
+        )
+
+        # Draw snake on surf
         for i, (x, y) in enumerate(self.snake):
             color = (0, 255, 0) if i == 0 else (0, 200, 0)
-            pygame.draw.rect(self.display, color,
-                             pygame.Rect(x*self.block, y*self.block, self.block, self.block))
-        pygame.display.flip()
-        self.clock.tick(RENDER_FPS)
+            pygame.draw.rect(
+                surf,
+                color,
+                pygame.Rect(
+                    x * self.block,
+                    y * self.block,
+                    self.block, self.block
+                )
+            )
+
+        # If save_path is provided, save as a PNG file
         if save_path is not None:
-            pygame.image.save(self.display, save_path)
+            pygame.image.save(surf, save_path)
 
 # ============================================================
 # ------------------  REPLAY BUFFER  -------------------------
@@ -373,17 +433,6 @@ def train():
     env = SnakeGame(render=False)
     agent = DQNAgent(state_dim=11, action_dim=3)
 
-    # Open a CSV file to log frame-level data
-    run_log_file = os.path.join(RUN_DIR, f"frame_log_{datetime.now():%Y%m%d_%H%M%S}.csv")
-    run_csv = open(run_log_file, 'w', newline='')
-    csv_writer = csv.writer(run_csv)
-    # Header
-    csv_writer.writerow([
-        'episode', 'global_step', 'step_in_ep', 'frame',
-        'action', 'reward',
-        'q0', 'q1', 'q2'
-    ])
-
     best_len = 0
     global_step = 0
     rewards = []  # List to store total reward of each episode for visualization with a plot
@@ -393,14 +442,20 @@ def train():
         sv = vectorize_state(s)
         total_r, steps = 0.0, 0
 
+        if ep % 100 == 0:
+            ep_folder = os.path.join(FRAMES_DIR, f"ep_{ep:04d}")
+            os.makedirs(ep_folder, exist_ok=True)
+        else:
+            ep_folder = None
+
         while True:
             a = agent.choose_action(sv)
             s2, r, done = env.step(a)
             sv2 = vectorize_state(s2)
-
-            # --- Log each frame ---
-            q_vals = agent.online(sv[None, :])[0]
-            csv_writer.writerow([ep, global_step, steps, env.frame, a, r, *q_vals.tolist()])
+            
+            if ep_folder is not None:
+                img_path = os.path.join(ep_folder, f"step_{steps:04d}.png")
+                env.render(save_path=img_path)
 
             agent.store(sv, a, r, sv2, float(done))
             agent.update()
@@ -433,7 +488,6 @@ def train():
             print(f"[Ep {ep}] score={len(env.snake)}  eps={agent.eps:.3f}  best={best_len}")
 
     logging.info("==== Training finished ====")
-    run_csv.close()
 
     #---------- VISUALIZE (plotting the results) ----------
     # Choose the window size (e.g., 100 episodes)
