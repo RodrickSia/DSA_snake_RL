@@ -4,6 +4,8 @@ import random
 import os
 import logging
 from datetime import datetime
+import matplotlib.pyplot as plt
+
 
 # ====================== CONFIGURATION ======================
 WIDTH, HEIGHT = 600, 400           # Window size
@@ -17,8 +19,8 @@ EPSILON_START = 1.0
 EPSILON_MIN = 0.01
 EPSILON_DECAY = 0.995
 
-EPISODES = 1000   # total training episodes
-MAX_STEPS = 500   # max steps per episode
+EPISODES = 2000   # total training episodes
+MAX_STEPS = 1000   # max steps per episode
 
 # Directory setup
 RUN_DIR = "runs"
@@ -193,6 +195,12 @@ class SnakeGame:
                 color,
                 pygame.Rect(x * self.block, y * self.block, self.block, self.block),
             )
+
+        # Draw snake length in top-left corner
+        font = pygame.font.SysFont(None, 24)
+        text = font.render(f'length snake= {len(self.snake)}', True, (255, 255, 255))
+        self.display.blit(text, (10, 10))
+
         pygame.display.flip()
         self.clock.tick(SPEED)
         if save_path is not None:
@@ -222,6 +230,7 @@ class QAgent:
 # ====================== TRAINING LOOP =======================
 
 def train():
+    rewards = []  
     env = SnakeGame(render=False)
     n_states = 2 ** 11  # 11‑bit state space
     agent = QAgent(n_states)
@@ -251,7 +260,8 @@ def train():
 
             if done:
                 break
-        
+            
+        rewards.append(total_reward)
         agent.decay_epsilon()
         # Log episode results
         logging.info(
@@ -266,6 +276,25 @@ def train():
     # Save final Q‑table
     np.save(os.path.join(LOG_DIR, "qtable_final.npy"), agent.q_table)
     logging.info("==== Training finished ====")
+
+      # === Plot the reward chart ===
+    window = 50  # Number of episodes to calculate moving average
+    def moving_average(x, w):
+        return np.convolve(x, np.ones(w)/w, mode='valid')
+
+    smoothed = moving_average(rewards, window)
+    episodes_ma = range(window-1, len(rewards))
+
+    plt.figure(figsize=(10,5))
+    plt.plot(rewards, alpha=0.3, label='Raw Reward')
+    plt.plot(episodes_ma, smoothed, label=f'MA (window={window})')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.title('Reward per Episode')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
 
 # ====================== SAVE EPISODE PLAY ===================
 
