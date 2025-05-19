@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from collections import deque
 import matplotlib.pyplot as plt
+import glob
+import cv2
 
 # ============================================================
 # ------------------  CONFIGURATION  -------------------------
@@ -15,8 +17,8 @@ BLOCK           = 20               # Grid block size (px)
 RENDER_FPS      = 60               # FPS when visualising
 
 # ---------- RL hyper-parameters ----------
-EPISODES        = 2000
-MAX_STEPS       = 750
+EPISODES        = 2500
+MAX_STEPS       = 2000
 BATCH_SIZE      = 64
 MEMORY_SIZE     = 30000
 GAMMA           = 0.99             # discount factor
@@ -26,6 +28,7 @@ EPS_START       = 1.0
 EPS_MIN         = 0.05
 EPS_DECAY       = 0.995
 TARGET_SYNC     = 250              # copy online→target every N updates
+PRETRAIN = False                   # If True, load pretrained weights from "pretrained_qnet.npz"
 
 # ---------- folders & logging ----------
 RUN_DIR = "runs"
@@ -304,6 +307,11 @@ class SnakeGame:
                     )
                 )
 
+            # Show snake length
+            font = pygame.font.SysFont(None, 24)
+            text = font.render(f'length snake= {len(self.snake)}', True, (255, 255, 255))
+            self.display.blit(text, (10, 10))
+
             pygame.display.flip()
             self.clock.tick(RENDER_FPS)
 
@@ -337,6 +345,13 @@ class SnakeGame:
                 )
             )
 
+        # Draw snake length on off-screen surf
+        if not pygame.font.get_init():
+           pygame.font.init()
+        font = pygame.font.SysFont(None, 24)
+        text = font.render(f'length snake= {len(self.snake)}', True, (255, 255, 255))
+        surf.blit(text, (10, 10))
+
         # If save_path is provided, save as a PNG file
         if save_path is not None:
             pygame.image.save(surf, save_path)
@@ -366,13 +381,19 @@ class DQNAgent:
         self.online = Neural(state_dim, action_dim)
         self.target = Neural(state_dim, action_dim)
 
-        # ————— Load pretrained weights into the online network —————
-        data = np.load("pretrained_qnet.npz")
-        for p, key in zip(self.online.params, data.files):
-            np.copyto(p.val, data[key])
+        # ——— Load pretrained weights nếu PRETRAIN=True ———
+        if PRETRAIN:
+            try:
+                data = np.load("pretrained_qnet.npz")
+                for p, key in zip(self.online.params, data.files):
+                    np.copyto(p.val, data[key])
+                print(">> DQNAgent: loaded pretrained_qnet.npz")
+            except FileNotFoundError:
+                print(">> pretrained_qnet.npz not found, start from scratch")
+        else:
+            print(">> Pretrain disabled, initializing network from scratch")
 
         self.target.copy_from(self.online)
-        print(">> DQNAgent: loaded pretrained_qnet.npz")
 
         self.memory = ReplayBuffer(MEMORY_SIZE)
         self.eps = EPS_START
@@ -488,6 +509,23 @@ def train():
 
         if ep % 100 == 0:
             print(f"[Ep {ep}] score={len(env.snake)}  eps={agent.eps:.3f}  best={best_len}")
+            
+            # === COMPILE FRAMES INTO MP4 ===
+            frame_folder = ep_folder
+            video_path = os.path.join(frame_folder, f"ep_{ep:04d}.mp4")
+            frame_files = sorted(glob.glob(os.path.join(frame_folder, "step_*.png")))
+            if frame_files:
+                # Read the first frame to get dimensions
+                img0 = cv2.imread(frame_files[0])
+                h, w, _ = img0.shape
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                vid = cv2.VideoWriter(video_path, fourcc, RENDER_FPS, (w, h))
+                for fn in frame_files:
+                    img = cv2.imread(fn)
+                    vid.write(img)
+                vid.release()
+                logging.info(f"Episode {ep:04d} video saved to {video_path}")
+
 
     logging.info("==== Training finished ====")
 

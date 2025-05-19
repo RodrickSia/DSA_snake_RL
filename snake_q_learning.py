@@ -4,9 +4,13 @@ import random
 import os
 import logging
 from datetime import datetime
+import matplotlib.pyplot as plt
+import glob
+import cv2
+
 
 # ====================== CONFIGURATION ======================
-WIDTH, HEIGHT = 600, 400           # Window size
+WIDTH, HEIGHT = 800, 600           # Window size
 BLOCK = 20                         # Grid block size (px)
 SPEED = 40                         # FPS when rendering
 
@@ -17,14 +21,17 @@ EPSILON_START = 1.0
 EPSILON_MIN = 0.01
 EPSILON_DECAY = 0.995
 
-EPISODES = 1000   # total training episodes
-MAX_STEPS = 500   # max steps per episode
+EPISODES = 2500   # total training episodes
+MAX_STEPS = 2000   # max steps per episode
 
 # Directory setup
 RUN_DIR = "runs"
 LOG_DIR = "logs"
 os.makedirs(RUN_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
+
+FRAMES_DIR = os.path.join(RUN_DIR, "frames_q_learning")
+os.makedirs(FRAMES_DIR, exist_ok=True)
 
 # Configure logging
 log_filename = os.path.join(LOG_DIR, f"snake_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
@@ -193,6 +200,12 @@ class SnakeGame:
                 color,
                 pygame.Rect(x * self.block, y * self.block, self.block, self.block),
             )
+
+        # Draw snake length in top-left corner
+        font = pygame.font.SysFont(None, 24)
+        text = font.render(f'length snake= {len(self.snake)}', True, (255, 255, 255))
+        self.display.blit(text, (10, 10))
+
         pygame.display.flip()
         self.clock.tick(SPEED)
         if save_path is not None:
@@ -222,6 +235,7 @@ class QAgent:
 # ====================== TRAINING LOOP =======================
 
 def train():
+    rewards = []  
     env = SnakeGame(render=False)
     n_states = 2 ** 11  # 11‑bit state space
     agent = QAgent(n_states)
@@ -251,7 +265,8 @@ def train():
 
             if done:
                 break
-        
+            
+        rewards.append(total_reward)
         agent.decay_epsilon()
         # Log episode results
         logging.info(
@@ -267,10 +282,29 @@ def train():
     np.save(os.path.join(LOG_DIR, "qtable_final.npy"), agent.q_table)
     logging.info("==== Training finished ====")
 
+      # === Plot the reward chart ===
+    window = 50  # Number of episodes to calculate moving average
+    def moving_average(x, w):
+        return np.convolve(x, np.ones(w)/w, mode='valid')
+
+    smoothed = moving_average(rewards, window)
+    episodes_ma = range(window-1, len(rewards))
+
+    plt.figure(figsize=(10,5))
+    plt.plot(rewards, alpha=0.3, label='Raw Reward')
+    plt.plot(episodes_ma, smoothed, label=f'MA (window={window})')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.title('Reward per Episode')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
 # ====================== SAVE EPISODE PLAY ===================
 
 def save_episode(env: SnakeGame, agent: QAgent, episode: int):
-    folder = os.path.join(RUN_DIR, f"ep_{episode:04d}")
+    folder = os.path.join(FRAMES_DIR, f"ep_{episode:04d}")
     os.makedirs(folder, exist_ok=True)
     
     # Store original render mode
@@ -306,6 +340,20 @@ def save_episode(env: SnakeGame, agent: QAgent, episode: int):
         if done or step >= MAX_STEPS:
             break
     
+        # === Compile frames into MP4 video ===
+    video_path = os.path.join(folder, f"ep_{episode:04d}.mp4")
+    frame_files = sorted(glob.glob(os.path.join(folder, "frame_*.png")))
+    if frame_files:
+        img0 = cv2.imread(frame_files[0])
+        h, w, _ = img0.shape
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        video = cv2.VideoWriter(video_path, fourcc, SPEED, (w, h))
+        for f in frame_files:
+            img = cv2.imread(f)
+            video.write(img)
+        video.release()
+        logging.info(f"Episode {episode:04d} video saved to {video_path}")
+
     # Restore original settings
     agent.epsilon = saved_epsilon
     # pygame.quit()
