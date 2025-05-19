@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from collections import deque
 import matplotlib.pyplot as plt
+import glob
+import cv2
 
 # ============================================================
 # ------------------  CONFIGURATION  -------------------------
@@ -304,6 +306,11 @@ class SnakeGame:
                     )
                 )
 
+            # Show snake length
+            font = pygame.font.SysFont(None, 24)
+            text = font.render(f'length snake= {len(self.snake)}', True, (255, 255, 255))
+            self.display.blit(text, (10, 10))
+
             pygame.display.flip()
             self.clock.tick(RENDER_FPS)
 
@@ -336,6 +343,13 @@ class SnakeGame:
                     self.block, self.block
                 )
             )
+
+        # Draw snake length on off-screen surf
+        if not pygame.font.get_init():
+           pygame.font.init()
+        font = pygame.font.SysFont(None, 24)
+        text = font.render(f'length snake= {len(self.snake)}', True, (255, 255, 255))
+        surf.blit(text, (10, 10))
 
         # If save_path is provided, save as a PNG file
         if save_path is not None:
@@ -488,6 +502,23 @@ def train():
 
         if ep % 100 == 0:
             print(f"[Ep {ep}] score={len(env.snake)}  eps={agent.eps:.3f}  best={best_len}")
+            
+            # === COMPILE FRAMES INTO MP4 ===
+            frame_folder = ep_folder
+            video_path = os.path.join(frame_folder, f"ep_{ep:04d}.mp4")
+            frame_files = sorted(glob.glob(os.path.join(frame_folder, "step_*.png")))
+            if frame_files:
+                # Read the first frame to get dimensions
+                img0 = cv2.imread(frame_files[0])
+                h, w, _ = img0.shape
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                vid = cv2.VideoWriter(video_path, fourcc, RENDER_FPS, (w, h))
+                for fn in frame_files:
+                    img = cv2.imread(fn)
+                    vid.write(img)
+                vid.release()
+                logging.info(f"Episode {ep:04d} video saved to {video_path}")
+
 
     logging.info("==== Training finished ====")
 

@@ -5,6 +5,8 @@ import os
 import logging
 from datetime import datetime
 import matplotlib.pyplot as plt
+import glob
+import cv2
 
 
 # ====================== CONFIGURATION ======================
@@ -335,6 +337,20 @@ def save_episode(env: SnakeGame, agent: QAgent, episode: int):
         if done or step >= MAX_STEPS:
             break
     
+        # === Compile frames into MP4 video ===
+    video_path = os.path.join(folder, f"ep_{episode:04d}.mp4")
+    frame_files = sorted(glob.glob(os.path.join(folder, "frame_*.png")))
+    if frame_files:
+        img0 = cv2.imread(frame_files[0])
+        h, w, _ = img0.shape
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        video = cv2.VideoWriter(video_path, fourcc, SPEED, (w, h))
+        for f in frame_files:
+            img = cv2.imread(f)
+            video.write(img)
+        video.release()
+        logging.info(f"Episode {episode:04d} video saved to {video_path}")
+
     # Restore original settings
     agent.epsilon = saved_epsilon
     # pygame.quit()
