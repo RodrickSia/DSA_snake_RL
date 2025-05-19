@@ -17,8 +17,8 @@ BLOCK           = 20               # Grid block size (px)
 RENDER_FPS      = 60               # FPS when visualising
 
 # ---------- RL hyper-parameters ----------
-EPISODES        = 2000
-MAX_STEPS       = 750
+EPISODES        = 2500
+MAX_STEPS       = 2000
 BATCH_SIZE      = 64
 MEMORY_SIZE     = 30000
 GAMMA           = 0.99             # discount factor
@@ -28,6 +28,7 @@ EPS_START       = 1.0
 EPS_MIN         = 0.05
 EPS_DECAY       = 0.995
 TARGET_SYNC     = 250              # copy online→target every N updates
+PRETRAIN = False                   # If True, load pretrained weights from "pretrained_qnet.npz"
 
 # ---------- folders & logging ----------
 RUN_DIR = "runs"
@@ -380,13 +381,19 @@ class DQNAgent:
         self.online = Neural(state_dim, action_dim)
         self.target = Neural(state_dim, action_dim)
 
-        # ————— Load pretrained weights into the online network —————
-        data = np.load("pretrained_qnet.npz")
-        for p, key in zip(self.online.params, data.files):
-            np.copyto(p.val, data[key])
+        # ——— Load pretrained weights nếu PRETRAIN=True ———
+        if PRETRAIN:
+            try:
+                data = np.load("pretrained_qnet.npz")
+                for p, key in zip(self.online.params, data.files):
+                    np.copyto(p.val, data[key])
+                print(">> DQNAgent: loaded pretrained_qnet.npz")
+            except FileNotFoundError:
+                print(">> pretrained_qnet.npz not found, start from scratch")
+        else:
+            print(">> Pretrain disabled, initializing network from scratch")
 
         self.target.copy_from(self.online)
-        print(">> DQNAgent: loaded pretrained_qnet.npz")
 
         self.memory = ReplayBuffer(MEMORY_SIZE)
         self.eps = EPS_START

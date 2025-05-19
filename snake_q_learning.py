@@ -10,7 +10,7 @@ import cv2
 
 
 # ====================== CONFIGURATION ======================
-WIDTH, HEIGHT = 600, 400           # Window size
+WIDTH, HEIGHT = 800, 600           # Window size
 BLOCK = 20                         # Grid block size (px)
 SPEED = 40                         # FPS when rendering
 
@@ -21,14 +21,17 @@ EPSILON_START = 1.0
 EPSILON_MIN = 0.01
 EPSILON_DECAY = 0.995
 
-EPISODES = 2000   # total training episodes
-MAX_STEPS = 1000   # max steps per episode
+EPISODES = 2500   # total training episodes
+MAX_STEPS = 2000   # max steps per episode
 
 # Directory setup
 RUN_DIR = "runs"
 LOG_DIR = "logs"
 os.makedirs(RUN_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
+
+FRAMES_DIR = os.path.join(RUN_DIR, "frames_q_learning")
+os.makedirs(FRAMES_DIR, exist_ok=True)
 
 # Configure logging
 log_filename = os.path.join(LOG_DIR, f"snake_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
@@ -301,7 +304,7 @@ def train():
 # ====================== SAVE EPISODE PLAY ===================
 
 def save_episode(env: SnakeGame, agent: QAgent, episode: int):
-    folder = os.path.join(RUN_DIR, f"ep_{episode:04d}")
+    folder = os.path.join(FRAMES_DIR, f"ep_{episode:04d}")
     os.makedirs(folder, exist_ok=True)
     
     # Store original render mode
